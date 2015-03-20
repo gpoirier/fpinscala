@@ -45,6 +45,8 @@ case class Prop(run: (MaxSize, TestCases, RNG) => Result) {
       case Falsified(_, _, _) => that.run(max, n, rng)
     }
   }
+
+  def quickRun = run(100, 100, RNG.Simple(0))
 }
 
 class PropBuilder(label: Option[String]) {
@@ -117,6 +119,11 @@ object Gen {
         g.sample.map(_ :: tail).run(rng)
     }
   })
+
+  def domain[A](values: IndexedSeq[A]): Gen[A] =
+    choose(0, values.length).map(values)
+
+  def values[A](a: A*): Gen[A] = domain(a.toVector)
 
   def weighted[A](g1: (Gen[A], Double), g2: (Gen[A], Double)): Gen[A] = {
     val sum = g1._2 + g2._2
