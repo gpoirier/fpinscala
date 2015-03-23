@@ -120,4 +120,39 @@ class MonoidSpec extends Specification with AfterAll {
     }
   }
 
+  val lorem = "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
+
+
+  "WC" should {
+    "count the words in lorem ipsum" in {
+      Stub(lorem).count === 8
+    }
+
+    "count zero for empty string" in {
+      Stub(", ").count === 0
+      Stub(" ").count === 0
+      Stub("").count === 0
+    }
+  }
+
+  "count" should {
+    "count the number of word in a short lorem ipsum" in {
+
+      implicit val m = wcMonoid
+
+      m.op(Stub("Lorem "), Stub("ipsum d")) === Part("Lorem ", 1, " d")
+      m.op(Stub("olor si"), Stub("t amet,")) === Part("olor ", 2, ",")
+
+      m.op(Stub(" consec"), Stub("tetur a")) === Part(" ", 1, " a")
+      m.op(Stub("dipisci"), Stub("ng elit")) === Part("dipiscing ", 0, " elit")
+
+      m.op(Part("Lorem ", 1, " d"), Part("olor ", 2, ",")) == Part("Lorem ", 4, ",")
+      m.op(Part(" ", 1, " a"), Part("dipiscing ", 0, " elit")) == Part(" ", 2, " elit")
+
+      m.op(Part("Lorem ", 4, ","), Part(" ", 2, " elit")) == Part("Lorem ", 6, "elit")
+
+      count(lorem) === 8
+    }
+  }
+
 }
