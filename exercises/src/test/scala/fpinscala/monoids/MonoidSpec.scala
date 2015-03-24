@@ -42,6 +42,8 @@ class MonoidSpec extends Specification with AfterAll {
   // the f and identity will be the same as only
   // going through f ( f(identity(x)) == f(x) ),
   // the functions themselves are not equal.
+  // And monoidLaws used by verifyLaws is using
+  // the object's intrinsic equality.
   // verifyLaws("endoMonoid", endoMonoid[Int]) {
   //   Gen.values(_ * 2, _ + 100, _ / 2, _ % 100)
   // }
