@@ -180,17 +180,33 @@ object Monoid {
     go(s).count
   }
 
-  def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
-    sys.error("todo")
+  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
+    Monoid(A.zero -> B.zero) {
+      case ((a1, b1), (a2, b2)) => A.op(a1, a2) -> B.op(b1, b2)
+    }
 
-  def functionMonoid[A,B](B: Monoid[B]): Monoid[A => B] =
-    sys.error("todo")
+  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] =
+    Monoid[A => B](_ => B.zero) {
+      (f1, f2) => a => B.op(f1(a), f2(a))
+    }
 
-  def mapMergeMonoid[K,V](V: Monoid[V]): Monoid[Map[K, V]] =
-    sys.error("todo")
+  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
+    Monoid(Map.empty[K, V]) { (m1, m2) =>
+      m1.foldLeft(m2) { case (b, (key, value)) =>
+        val newValue = b.get(key).fold(value) { V.op(_, value) }
+        b + (key -> newValue)
+      }
+    }
 
-  def bag[A](as: IndexedSeq[A]): Map[A, Int] =
-    sys.error("todo")
+  def bag[A](as: IndexedSeq[A]): Map[A, Int] = {
+    val M = mapMergeMonoid[A, Int](intAddition)
+    foldMapV(as, M)(a => Map(a -> 1))
+  }
+
+  def bag_groupBy[A](as: IndexedSeq[A]): Map[A, Int] =
+    as.groupBy(identity).map {
+      case (a, b) => a -> b.length
+    }
 }
 
 trait Foldable[F[_]] {

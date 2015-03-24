@@ -155,4 +155,34 @@ class MonoidSpec extends Specification with AfterAll {
     }
   }
 
+  verifyLaws("productMonoid #1", productMonoid(intAddition, intMultiplication)) {
+    for {
+      i <- Gen.int
+      j <- Gen.int
+    } yield i -> j
+  }
+
+  verifyLaws("productMonoid #2", productMonoid(booleanAnd, booleanOr)) {
+    for {
+      b1 <- Gen.boolean
+      b2 <- Gen.boolean
+    } yield b1 -> b2
+  }
+
+  "mapMergeMonoid" should {
+    "merge two maps using intAddition monoid" in {
+      val m = mapMergeMonoid[String, Int](intAddition)
+
+      val merged = m.op(Map("abc" -> 10, "def" -> 20), Map("def" -> 5, "xyz" -> 11))
+      merged === Map("abc" -> 10, "def" -> 25, "xyz" -> 11)
+    }
+  }
+
+  "bag" should {
+    "create a map out of a vector" in {
+      val vector = Vector("abc", "def", "xyz", "def", "qwe", "xyz")
+      bag(vector) === Map("abc" -> 1, "def" ->2, "xyz" -> 2, "qwe" -> 1)
+      bag_groupBy(vector) === Map("abc" -> 1, "def" ->2, "xyz" -> 2, "qwe" -> 1)
+    }
+  }
 }
