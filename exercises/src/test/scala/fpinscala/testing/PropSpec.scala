@@ -3,14 +3,7 @@ package fpinscala.testing
 import fpinscala.state.RNG
 import org.specs2.mutable._
 
-object PropSpec {
-  implicit class PropOps(val p: Prop) extends AnyVal {
-    def quickRun = p.run(100, 100, RNG.Simple(0))
-  }
-}
 class PropSpec extends Specification {
-
-  import PropSpec._
 
   def validProperty1 = Prop("validProperty1")
     .forAll(Gen.choose(10, 20)) { i => i >= 10 && i < 20 }

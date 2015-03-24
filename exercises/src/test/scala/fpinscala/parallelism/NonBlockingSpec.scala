@@ -18,7 +18,7 @@ class NonBlockingSpec extends Specification with AfterAll {
 
   "parMap" should {
     "work" in {
-      val p = parMap(List.range(1, 10000))(Math.sqrt(_))
+      val p = parMap((1 to 10000).toVector)(Math.sqrt(_))
 
       val list = run(es)(p)
 

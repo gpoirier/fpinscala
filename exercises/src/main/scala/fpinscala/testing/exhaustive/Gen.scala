@@ -46,7 +46,7 @@ object Gen {
     } yield for {
       sorted <- Par.forkValue(list.sorted)
       parSorted = sorted.map(Par.unit)
-      reSorted <- Par.fork(Par.sequence(parSorted))
+      reSorted <- Par.fork(Par.sequence(parSorted.toVector))
     } yield reSorted.headOption.getOrElse(0)
 
   implicit class GenWeightOps[A](val gen: (SampleGen[A], Double)) {
