@@ -55,16 +55,38 @@ trait Applicative[F[_]] extends Functor[F] {
 
   def factor[A,B](fa: F[A], fb: F[B]): F[(A,B)] = map2(fa, fb)((_, _))
 
-  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = ???
+  def product[G[_]](G: Applicative[G]): Applicative[({type f[x] = (F[x], G[x])})#f] = {
+    val F = this
+    new Applicative[({type f[x] = (F[x], G[x])})#f] {
+      override def unit[A](a: => A): (F[A], G[A]) = F.unit(a) -> G.unit(a)
+      override def map2[A, B, C](fa: (F[A], G[A]), fb: (F[B], G[B]))(f: (A, B) => C): (F[C], G[C]) = {
+        F.map2(fa._1, fb._1)(f) -> G.map2(fa._2, fb._2)(f)
+      }
+    }
+  }
 
-  def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = ???
+  def compose[G[_]](G: Applicative[G]): Applicative[({type f[x] = F[G[x]]})#f] = {
+    val F = this
+    new Applicative[({type f[x] = F[G[x]]})#f] {
+      override def unit[A](a: => A): F[G[A]] = F.unit(G.unit(a))
+      override def map2[A, B, C](fa: F[G[A]], fb: F[G[B]])(f: (A, B) => C): F[G[C]] =
+        F.map2(fa, fb)(G.map2(_, _)(f))
+    }
+  }
 
-  def sequenceMap[K,V](ofa: Map[K,F[V]]): F[Map[K,V]] = ???
+  def sequenceMap[K,V](ofa: Map[K,F[V]]): F[Map[K,V]] = {
+    ofa.foldLeft(unit(Map.empty[K, V])) { case (acc, (key, fv)) =>
+      map2(acc, fv) { (map, value) =>
+        map + (key -> value)
+      }
+    }
+  }
 }
 
 case class Tree[+A](head: A, tail: List[Tree[A]])
 
 trait Monad[F[_]] extends Applicative[F] {
+  override def map[A, B](ma: F[A])(f: A => B): F[B] = flatMap(ma) { a => unit(f(a)) }
   def flatMap[A,B](ma: F[A])(f: A => F[B]): F[B] = join(map(ma)(f))
 
   def join[A](mma: F[F[A]]): F[A] = flatMap(mma)(ma => ma)
@@ -77,7 +99,11 @@ trait Monad[F[_]] extends Applicative[F] {
 }
 
 object Monad {
-  def eitherMonad[E]: Monad[({type f[x] = Either[E, x]})#f] = ???
+  def eitherMonad[E] = new Monad[({type f[x] = Either[E, x]})#f] {
+    override def unit[A](a: => A): Either[E, A] = Right(a)
+    override def flatMap[A, B](either: Either[E, A])(f: A => Either[E, B]): Either[E, B] =
+      either.right flatMap f
+  }
 
   def stateMonad[S] = new Monad[({type f[x] = State[S, x]})#f] {
     def unit[A](a: => A): State[S, A] = State(s => (a, s))
@@ -91,7 +117,7 @@ object Monad {
 
 sealed trait Validation[+E, +A]
 
-case class Failure[E](head: E, tail: Vector[E])
+case class Failure[E](head: E, tail: Vector[E] = Vector.empty)
   extends Validation[E, Nothing]
 
 case class Success[A](a: A) extends Validation[Nothing, A]
@@ -109,7 +135,18 @@ object Applicative {
       a zip b map f.tupled
   }
 
-  def validationApplicative[E]: Applicative[({type f[x] = Validation[E,x]})#f] = ???
+  def validationApplicative[E] = new Applicative[({type f[x] = Validation[E,x]})#f] {
+    override def unit[A](a: => A): Validation[E, A] = Success(a)
+    override def map2[A,B,C](fa: Validation[E, A], fb: Validation[E, B])(f: (A, B) => C): Validation[E, C] = {
+      (fa, fb) match {
+        case (Success(a), Success(b)) => Success(f(a, b))
+        case (Success(_), f @ Failure(_, _)) => f
+        case (f @ Failure(_, _), Success(_)) => f
+        case (Failure(head1, tail1), Failure(head2, tail2)) =>
+          Failure(head1, (tail1 :+ head2) ++ tail2)
+      }
+    }
+  }
 
   type Const[A, B] = A
 
@@ -168,11 +205,23 @@ trait Traverse[F[_]] extends Functor[F] with Foldable[F] {
 }
 
 object Traverse {
-  val listTraverse = ???
+  val listTraverse = new Traverse[List] {
+    override def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
+      as.foldRight(z)(f)
+  }
 
-  val optionTraverse = ???
+  val optionTraverse = new Traverse[Option] {
+    override def foldRight[A, B](as: Option[A])(z: B)(f: (A, B) => B): B =
+      as.foldRight(z)(f)
+  }
 
-  val treeTraverse = ???
+  val treeTraverse = new Traverse[Tree] {
+    override def foldRight[A, B](as: Tree[A])(z: B)(f: (A, B) => B): B = {
+      as.tail.foldRight(f(as.head, z)) { (tree, b) =>
+        foldRight(tree)(b)(f)
+      }
+    }
+  }
 }
 
 // The `get` and `set` functions on `State` are used above,
