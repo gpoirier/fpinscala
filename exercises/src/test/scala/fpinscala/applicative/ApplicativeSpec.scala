@@ -122,4 +122,34 @@ class ApplicativeSpec extends Specification {
       M.sequenceMap(mixedMap) === Left("NaN")
     }
   }
+
+  "listTraverse" >> {
+    "reverse" >> {
+      val T = Traverse.listTraverse
+      T.reverse(List(1, 2, 4)) === List(4, 2, 1)
+    }
+    "foldLeft" >> {
+      val T = Traverse.listTraverse
+      val list = List(1, 2, 4)
+
+      val reversed = T.foldLeft(list)(List.empty[Int])(_.::(_))
+      reversed === list.reverse
+    }
+  }
+  "optionTraverse" >> {
+    "reverse doesn't do anything to options" >> {
+      val T = Traverse.optionTraverse
+      T.reverse(Some(1)) === Some(1)
+      T.reverse(None) === None
+    }
+  }
+
+  "treeTraverse" >> {
+    "reverse" >> {
+      val T = Traverse.treeTraverse
+      T.reverse(Tree(1, List(Tree(2, Nil), Tree(4, Nil)))) ===
+        Tree(4, List(Tree(2, Nil), Tree(1, Nil)))
+    }
+  }
+
 }
