@@ -22,7 +22,7 @@ class NonBlockingSpec extends Specification with AfterAll {
 
       val list = run(es)(p)
 
-      list should have size(10000 - 1)
+      list should have size(10000)
       list(0) should beEqualTo (1.0)
       list(8) should beEqualTo (3.0)
     }
