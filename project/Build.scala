@@ -3,16 +3,24 @@ import Keys._
 
 object FPInScalaBuild extends Build {
   val opts = Project.defaultSettings ++ Seq(
-    scalaVersion := "2.11.5",
-    resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
-    resolvers += "bintray/non" at "http://dl.bintray.com/non/maven",
+    scalaVersion := "2.11.6",
+    resolvers ++= Seq(
+      "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
+      "bintray/non" at "http://dl.bintray.com/non/maven",
+      "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
+    ),
     libraryDependencies ++= Seq(
-      "org.specs2" %% "specs2-core" % "3.0" % "test",
-      "org.specs2" %% "specs2-scalacheck" % "3.0" % "test",
+      "org.specs2" %% "specs2-core" % "3.4" % "test",
+      "org.specs2" %% "specs2-scalacheck" % "3.4" % "test",
       "org.scalacheck" %% "scalacheck" % "1.12.2" % "test",
       "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.3"
     ),
-    addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.5.2")
+    addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.5.2"),
+    // The scalacOptions are reset for tests with this command
+    // because it doesn't seem to be possible through ivy to scope
+    // to exclude a compiler plugin from the unit tests
+    // and kind-projector conflicts with -Yrangepos
+    scalacOptions in Test := Seq("-Yrangepos")
   )
 
   lazy val root =
