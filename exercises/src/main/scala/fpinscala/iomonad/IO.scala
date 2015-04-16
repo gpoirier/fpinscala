@@ -379,8 +379,9 @@ object IO3 {
   }
 
   case class PrintLine(line: String) extends Console[Unit] {
-    def toPar = Par.lazyUnit(println(line))
-    def toThunk = () => println(line)
+    // This is disabled not to cluster unit tests that only check being stack-safe
+    def toPar = Par.lazyUnit(() /*println(line)*/)
+    def toThunk = () => () //println(line)
     def toReader = ConsoleReader { s => () } // noop
     def toState = ConsoleState { bufs => ((), bufs.copy(out = bufs.out :+ line)) } // append to the output
   }

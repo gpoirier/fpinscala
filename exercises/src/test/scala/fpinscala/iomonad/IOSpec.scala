@@ -24,7 +24,7 @@ class IOSpec extends Specification {
     "is not stack-safe" >> new IO3Fixture {
       import IO3._
 
-      runConsoleFunction0(countDown(100000)).apply should throwAn[StackOverflowError]
+      runConsoleFunction0(countDown(10000000)).apply should throwAn[StackOverflowError]
     }
   }
 
@@ -33,10 +33,11 @@ class IOSpec extends Specification {
       import IO3._
 
       try {
-        runConsole(countDown(100000)) should beEqualTo(())
+        runConsole(countDown(10000000)) should beEqualTo(())
       } catch {
         case e: StackOverflowError => failure("Stack Overflow")
       }
     }
   }
+
 }
