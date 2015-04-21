@@ -182,5 +182,40 @@ object Immutable {
   })
 }
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 
+sealed abstract class STMap[S,K,V] {
+  protected def hashMap: mutable.HashMap[K, V]
+  def size: ST[S,Int] = ST(hashMap.size)
+
+  // Write a value at the give index of the array
+  def write(key: K, value: V): ST[S, Unit] = new ST[S, Unit] {
+    def run(s: S) = {
+      hashMap(key) = value
+      ((), s)
+    }
+  }
+
+  // Read the value at the given index of the array
+  def read(key: K): ST[S, Option[V]] = ST(hashMap.get(key))
+
+  // Turn the array into an immutable list
+  def freeze: ST[S, Map[K, V]] = ST(hashMap.toMap)
+
+  def merge(xs: Map[K, V]): ST[S,Unit] = {
+    xs.foldLeft(ST[S, Unit](())) { case (st, (key, value)) =>
+      st flatMap { _ => write(key, value) }
+    }
+  }
+}
+
+object STMap {
+  // Construct an array of the given size filled with the value v
+  def apply[S, K, V](pairs: (K, V)*): ST[S, STMap[S, K, V]] =
+    ST(new STMap[S, K, V] {
+      lazy val hashMap = mutable.HashMap(pairs: _*)
+    })
+
+  def fromMap[S, K, V](xs: Map[K, V]): ST[S, STMap[S, K, V]] =
+    STMap(xs.toSeq: _*)
+}
