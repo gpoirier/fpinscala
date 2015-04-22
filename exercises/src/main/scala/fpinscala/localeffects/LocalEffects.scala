@@ -93,12 +93,18 @@ sealed abstract class STArray[S,A](implicit manifest: Manifest[A]) {
   }
 
   // Read the value at the given index of the array
-  def read(i: Int): ST[S,A] = ST(value(i))
+  def read(i: Int): ST[S,A] = ST(value.applyOrElse(i, { (_: Int) =>
+    sys.error(s"Index out of bound ($i) for array of size ${value.length}")
+  }))
 
   // Turn the array into an immutable list
   def freeze: ST[S,List[A]] = ST(value.toList)
 
-  def fill(xs: Map[Int,A]): ST[S,Unit] = ???
+  def fill(xs: Map[Int,A]): ST[S,Unit] = {
+    xs.foldLeft(ST[S, Unit](())) { case (st, (index, a)) =>
+      st flatMap { _ => write(index, a) }
+    }
+  }
 
   def swap(i: Int, j: Int): ST[S,Unit] = for {
     x <- read(i)
@@ -124,9 +130,46 @@ object STArray {
 object Immutable {
   def noop[S] = ST[S,Unit](())
 
-  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = ???
+  def partition[S](a: STArray[S,Int], l: Int, r: Int, pivot: Int): ST[S,Int] = {
+    for {
+      pivotVal <- a.read(pivot)
+      _ <- a.swap(pivot, r)
+      jRef <- STRef(l)
+      _ <- {
+        (l until r).foldLeft(noop[S]) { (st, i) =>
+          for {
+            _ <- st
+            iValue <- a.read(i)
+            _ <- {
+              if (iValue < pivotVal) {
+                for {
+                  j <- jRef.read
+                  _ <- a.swap(i, j)
+                  _ <- jRef.write(j + 1)
+                } yield ()
+              } else {
+                noop[S]
+              }
+            }
+          } yield ()
+        }
+      }
+      j <- jRef.read
+      _ <- a.swap(j, r)
+    } yield j
+  }
 
-  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] = ???
+  def qs[S](a: STArray[S,Int], l: Int, r: Int): ST[S, Unit] = {
+    if (l < r) {
+      for {
+        pi <- partition(a, l, r, l + (r - l) / 2)
+        _ <- qs(a, l, pi - 1)
+        _ <- qs(a, pi + 1, r)
+      } yield ()
+    } else {
+      noop[S]
+    }
+  }
 
   def quicksort(xs: List[Int]): List[Int] =
     if (xs.isEmpty) xs else ST.runST(new RunnableST[List[Int]] {
@@ -139,5 +182,40 @@ object Immutable {
   })
 }
 
-import scala.collection.mutable.HashMap
+import scala.collection.mutable
 
+sealed abstract class STMap[S,K,V] {
+  protected def hashMap: mutable.HashMap[K, V]
+  def size: ST[S,Int] = ST(hashMap.size)
+
+  // Write a value at the give index of the array
+  def write(key: K, value: V): ST[S, Unit] = new ST[S, Unit] {
+    def run(s: S) = {
+      hashMap(key) = value
+      ((), s)
+    }
+  }
+
+  // Read the value at the given index of the array
+  def read(key: K): ST[S, Option[V]] = ST(hashMap.get(key))
+
+  // Turn the array into an immutable list
+  def freeze: ST[S, Map[K, V]] = ST(hashMap.toMap)
+
+  def merge(xs: Map[K, V]): ST[S,Unit] = {
+    xs.foldLeft(ST[S, Unit](())) { case (st, (key, value)) =>
+      st flatMap { _ => write(key, value) }
+    }
+  }
+}
+
+object STMap {
+  // Construct an array of the given size filled with the value v
+  def apply[S, K, V](pairs: (K, V)*): ST[S, STMap[S, K, V]] =
+    ST(new STMap[S, K, V] {
+      lazy val hashMap = mutable.HashMap(pairs: _*)
+    })
+
+  def fromMap[S, K, V](xs: Map[K, V]): ST[S, STMap[S, K, V]] =
+    STMap(xs.toSeq: _*)
+}
