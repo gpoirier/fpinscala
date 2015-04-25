@@ -133,7 +133,17 @@ object SimpleStreamTransducers {
     /*
      * Exercise 5: Implement `|>`. Let the types guide your implementation.
      */
-    def |>[O2](p2: Process[O,O2]): Process[I,O2] = ???
+    def |>[O2](p2: Process[O,O2]): Process[I,O2] = p2 match {
+      case Halt() => Halt()
+      case Emit(h, t) => Emit(h, this |> t)
+      case Await(recv2) => this match {
+        case Halt() => Halt() |> recv2(None)
+        case Emit(h, t) => t |> recv2(Some(h))
+        case Await(recv1) => Await { i1 =>
+          recv1(i1) |> p2
+        }
+      }
+    }
 
     /*
      * Feed `in` to this `Process`. Uses a tail recursive loop as long
@@ -197,7 +207,32 @@ object SimpleStreamTransducers {
     /*
      * Exercise 6: Implement `zipWithIndex`.
      */
-    def zipWithIndex: Process[I,(O,Int)] = ???
+    def zipWithIndex: Process[I,(O,Int)] = this zipStream Stream.from(0)
+
+    def zipStream[A](xs: Stream[A]): Process[I, (O, A)] =
+      if (xs.isEmpty) Halt()
+      else this match {
+        case Halt() => Halt()
+        case Emit(h, t) => Emit(h -> xs.head, t zipStream xs.tail)
+        case Await(recv) => Await { i =>
+          recv(i) zipStream xs
+        }
+      }
+
+    def zip[O2](p2: Process[I, O2]): Process[I, (O, O2)] =
+      (this, p2) match {
+        case (Halt(), _) | (_, Halt()) => Halt()
+        case (Emit(h1, t1), Emit(h2, t2)) => Emit(h1 -> h2, t1 zip t2)
+        case (Await(recv1), Await(recv2)) =>
+          Await { i =>
+            recv1(i) zip recv2(i)
+          }
+        case (_, Await(recv)) =>
+          Await { i => this zip recv(i) }
+        case (Await(recv), _) =>
+          Await { i => recv(i) zip p2 }
+      }
+
 
     /* Add `p` to the fallback branch of this process */
     def orElse(p: Process[I,O]): Process[I,O] = this match {
@@ -289,13 +324,30 @@ object SimpleStreamTransducers {
     /*
      * Exercise 1: Implement `take`, `drop`, `takeWhile`, and `dropWhile`.
      */
-    def take[I](n: Int): Process[I,I] = ???
+    def take[I](n: Int): Process[I,I] = {
+      if (n < 1) Halt()
+      else Await {
+        case Some(x) => Emit(x, take(n - 1))
+        case None => Halt()
+      }
+    }
 
-    def drop[I](n: Int): Process[I,I] = ???
+    def drop[I](n: Int): Process[I,I] = Await[I, I] {
+      case Some(x) if n > 0 => drop(n - 1)
+      case Some(x) => Emit(x)
+      case None => Halt()
+    }.repeat
 
-    def takeWhile[I](f: I => Boolean): Process[I,I] = ???
+    def takeWhile[I](f: I => Boolean): Process[I, I] = Await {
+      case Some(x) if f(x) => Emit(x, takeWhile(f))
+      case _ => Halt()
+    }
 
-    def dropWhile[I](f: I => Boolean): Process[I,I] = ???
+    def dropWhile[I](f: I => Boolean): Process[I, I] = Await[I, I] {
+      case Some(x) if f(x) => dropWhile(f)
+      case Some(x) => Emit(x)
+      case None => Halt()
+    }.repeat
 
     /* The identity `Process`, just repeatedly echos its input. */
     def id[I]: Process[I,I] = lift(identity)
@@ -303,7 +355,13 @@ object SimpleStreamTransducers {
     /*
      * Exercise 2: Implement `count`.
      */
-    def count[I]: Process[I,Int] = ???
+    def count[I]: Process[I,Int] = {
+      def go(acc: Int): Process[I, Int] = Await {
+        case Some(_) => Emit(acc, go(acc + 1))
+        case None => Halt()
+      }
+      go(1)
+    }
 
     /* For comparison, here is an explicit recursive implementation. */
     def count2[I]: Process[I,Int] = {
@@ -315,7 +373,13 @@ object SimpleStreamTransducers {
     /*
      * Exercise 3: Implement `mean`.
      */
-    def mean: Process[Double,Double] = ???
+    def mean: Process[Double, Double] = {
+      def go(avg: Double, count: Int): Process[Double, Double] = await { x =>
+          val newMean = (avg * count + x) / (count + 1)
+          Emit(newMean, go(newMean, count + 1))
+      }
+      go(0, 0)
+    }
 
     def loop[S,I,O](z: S)(f: (I,S) => (O,S)): Process[I,O] =
       await((i: I) => f(i,z) match {
@@ -324,15 +388,24 @@ object SimpleStreamTransducers {
 
     /* Exercise 4: Implement `sum` and `count` in terms of `loop` */
 
-    def sum2: Process[Double,Double] = ???
+    def sum2: Process[Double,Double] = loop(0.0) { (d, s) =>
+      val sum = s + d
+      (sum, sum)
+    }
 
-    def count3[I]: Process[I,Int] = ???
+    def count3[I]: Process[I,Int] = loop(1) { (_, count) => (count, count + 1) }
 
     /*
      * Exercise 7: Can you think of a generic combinator that would
      * allow for the definition of `mean` in terms of `sum` and
      * `count`?
      */
+
+    def mean2: Process[Double, Double] =
+      sum.zipWithIndex map { case (s, i) => s / (i + 1) }
+
+    def mean3: Process[Double, Double] =
+      (sum zip count) map { case (s, c) => s / c }
 
     def feed[A,B](oa: Option[A])(p: Process[A,B]): Process[A,B] =
       p match {
@@ -346,6 +419,7 @@ object SimpleStreamTransducers {
      *
      * See definition on `Process` above.
      */
+    def zipWithIndex[I]: Process[I, (I, Int)] = id.zipWithIndex
 
     /*
      * Exercise 8: Implement `exists`
@@ -353,7 +427,11 @@ object SimpleStreamTransducers {
      * We choose to emit all intermediate values, and not halt.
      * See `existsResult` below for a trimmed version.
      */
-    def exists[I](f: I => Boolean): Process[I,Boolean] = ???
+    def exists[I](f: I => Boolean): Process[I, Boolean] =
+      loop(false) { (i, s) =>
+        val value = s || f(i)
+        value -> value
+      }
 
     /* Awaits then emits a single value, then halts. */
     def echo[I]: Process[I,I] = await(i => emit(i))
@@ -386,6 +464,13 @@ object SimpleStreamTransducers {
      * Exercise 9: Write a program that reads degrees fahrenheit as `Double` values from a file,
      * converts each temperature to celsius, and writes results to another file.
      */
+
+    def convertFahrenheit: Process[String, String] =
+      filter[String](_.trim.nonEmpty)
+        .filter(!_.startsWith("#"))
+        .map(_.toDouble)
+        .map(toCelsius)
+        .map(_.toString)
 
     def toCelsius(fahrenheit: Double): Double =
       (5.0 / 9.0) * (fahrenheit - 32.0)
