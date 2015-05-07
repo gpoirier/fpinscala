@@ -585,7 +585,20 @@ object GeneralizedStreamTransducers {
      * below, this is not tail recursive and responsibility for stack safety
      * is placed on the `Monad` instance.
      */
-    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = ???
+    def runLog(implicit F: MonadCatch[F]): F[IndexedSeq[O]] = {
+      def go(cur: Process[F, O], acc: F[IndexedSeq[O]]): F[IndexedSeq[O]] = {
+        cur match {
+          case Emit(h, t) => go(t, F.map(acc)(_ :+ h))
+          case Halt(End) => acc
+          case Halt(err) => F.fail(err)
+          case Await(req, recv) =>
+            F.flatMap(F.attempt(req)) { next =>
+              go(recv(next), acc)
+            }
+        }
+      }
+      go(this, F.unit(IndexedSeq()))
+    }
 
     /*
      * We define `Process1` as a type alias - see the companion object
