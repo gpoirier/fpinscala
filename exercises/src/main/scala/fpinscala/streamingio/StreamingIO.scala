@@ -825,18 +825,21 @@ object GeneralizedStreamTransducers {
      * when processing the stream of lines is finished.
      */
     def lines(filename: String): Process[IO,String] =
+      linesFromSource(() => io.Source.fromFile(filename))
+
+    def linesFromSource(src: () => io.Source): Process[IO,String] =
       resource
-        { IO(io.Source.fromFile(filename)) }
-        { src =>
-            lazy val iter = src.getLines // a stateful iterator
-            def step = if (iter.hasNext) Some(iter.next) else None
-            lazy val lines: Process[IO,String] = eval(IO(step)).flatMap {
-              case None => Halt(End)
-              case Some(line) => Emit(line, lines)
-            }
-            lines
+      { IO(src()) }
+      { src =>
+        lazy val iter = src.getLines // a stateful iterator
+        def step = if (iter.hasNext) Some(iter.next) else None
+        lazy val lines: Process[IO,String] = eval(IO(step)).flatMap {
+          case None => Halt(End)
+          case Some(line) => Emit(line, lines)
         }
-        { src => eval_ { IO(src.close) } }
+        lines
+      }
+      { src => eval_ { IO(src.close) } }
 
     /* Exercise 11: Implement `eval`, `eval_`, and use these to implement `lines`. */
     def eval[F[_],A](a: F[A]): Process[F,A] =
@@ -846,16 +849,14 @@ object GeneralizedStreamTransducers {
       }
 
     /* Evaluate the action purely for its effects. */
-    def eval_[F[_],A,B](a: F[A]): Process[F,B] =
-      await(a) {
-        case Right(a) => Halt(End)
-        case Left(err) => Halt(err)
-      }
-    
+    def eval_[F[_],A, B](a: F[A]): Process[F, B] =
+      eval(a).drain
+
 
     /* Helper function with better type inference. */
     def evalIO[A](a: IO[A]): Process[IO,A] =
       eval[IO,A](a)
+
 
     /*
      * We now have nice, resource safe effectful sources, but we don't
@@ -998,21 +999,25 @@ object GeneralizedStreamTransducers {
 
     type Sink[F[_],O] = Process[F, O => Process[F,Unit]]
 
-    import java.io.FileWriter
+    import java.io.{ Writer, FileWriter }
 
     /* A `Sink` which writes input strings to the given file. */
     def fileW(file: String, append: Boolean = false): Sink[IO,String] =
-      resource[FileWriter, String => Process[IO,Unit]]
-        { IO { new FileWriter(file, append) }}
-        { w => constant { (s: String) => eval[IO,Unit](IO(w.write(s))) }}
-        { w => eval_(IO(w.close)) }
+      fileWrite(() => new FileWriter(file, append))
+
+    def fileWrite(writer: () => Writer): Sink[IO,String] =
+      resource[Writer, String => Process[IO,Unit]]
+      { IO { writer() }}
+      { w => constant { (s: String) => eval[IO,Unit](IO(w.write(s))) }}
+      { w => eval_(IO(w.close)) }
 
     /* The infinite, constant stream. */
     def constant[A](a: A): Process[IO,A] =
       eval(IO(a)).flatMap { a => Emit(a, constant(a)) }
 
     /* Exercise 12: Implement `join`. Notice this is the standard monadic combinator! */
-    def join[F[_],A](p: Process[F,Process[F,A]]): Process[F,A] = ???
+    def join[F[_],A](p: Process[F,Process[F,A]]): Process[F,A] =
+      p.flatMap(identity)
 
     /*
      * An example use of the combinators we have so far: incrementally
