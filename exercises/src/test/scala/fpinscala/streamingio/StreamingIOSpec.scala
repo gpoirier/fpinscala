@@ -107,7 +107,7 @@ class StreamingIOSpec extends Specification {
 
       val composite = (Process.sum |> Process.mean)(numbers)
 
-      composite.take(5) === Stream(0.0, 0.5, 4.0/3, 10.0/4, 20.0/5)
+      composite.take(5) === Stream(0.0, 0.5, 4.0 / 3, 10.0 / 4, 20.0 / 5)
     }
 
     "filter |> (* 2)" >> {
@@ -143,6 +143,49 @@ class StreamingIOSpec extends Specification {
       val input = "32" #:: " " #:: "# Comment" #:: "77" #:: Stream.empty
 
       Process.convertFahrenheit(input) === "0.0" #:: "25.0" #:: Stream.empty
+    }
+  }
+
+  "GeneralizedStreamTransducers" >> {
+    import GeneralizedStreamTransducers._
+    import fpinscala.iomonad.{IO,Monad,Free,unsafePerformIO}
+    import fpinscala.iomonad.IO0.fahrenheitToCelsius
+    import Process._
+    import java.io.StringWriter
+
+    "converter" >> {
+
+      val fahrenheit =
+        """
+          |32
+          |# Comment
+          |77
+          |
+          |-32
+        """.stripMargin
+
+      val celsiusExcepted =
+        """
+          |0.0
+          |25.0
+          |TODO
+        """.stripMargin
+
+      val writer = new StringWriter()
+
+      val converter: Process[IO,Unit] =
+        linesFromSource { () => io.Source.fromIterable(fahrenheit) }
+          .filter { line => !line.startsWith("#") && !line.trim.isEmpty }
+          .map { line => fahrenheitToCelsius(line.toDouble).toString }
+          .pipe(intersperse("\n"))
+          .to(fileWrite { () => writer })
+          .drain
+
+      runLog(converter)
+
+      pending
+
+      // writer.toString === celsiusExcepted
     }
   }
 }
